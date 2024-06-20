@@ -3,7 +3,9 @@ import logging
 import glob
 import importlib.util
 import json
-from telegram.ext import Application
+from telegram.ext import Application, ExtBot, Defaults
+from telegram.request import HTTPXRequest
+import httpx
 
 # Configuration du logger
 logger = logging.getLogger('bot')
@@ -84,13 +86,24 @@ def load_modules(application):
             if hasattr(module, 'register'):
                 module.register(application, track_command)  # Pass track_command as a keyword argument
 
+class CustomHTTPXRequest(HTTPXRequest):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.client = httpx.AsyncClient(base_url="http://localhost:8081")  # Remplacez URL par celle de votre serveur Bot API local
+ 
+    async def _request(self, *args, **kwargs):
+        response = await self.client.request(*args, **kwargs)
+        response.raise_for_status()
+        return response
+
 def main():
     token = os.getenv('BOT_TOKEN')
     if not token:
         logger.error("No BOT_TOKEN provided. Please set the BOT_TOKEN environment variable.")
         return
 
-    application = Application.builder().token(token).build()
+    custom_request = CustomHTTPXRequest()
+    application = Application.builder().token(token).request(custom_request).build()
 
     # Load all modules dynamically
     load_modules(application)

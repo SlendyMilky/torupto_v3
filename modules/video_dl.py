@@ -2,10 +2,17 @@ import os
 import logging
 import asyncio
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes, CommandHandler
 import yt_dlp
+from pyrogram import Client
 import telegram.error  # Importation nécessaire pour gérer les exceptions de Telegram
 from datetime import datetime
+
+# Configuration pyrogram
+app_id = "22197233"
+app_hash = "d7d3e6143586625b7dd16d6c46655146"
+token = os.getenv('BOT_TOKEN')
 
 # Configuration du logger pour ce module
 logger = logging.getLogger('bot.video_download')
@@ -13,6 +20,9 @@ logger = logging.getLogger('bot.video_download')
 # Vérifiez et créez le répertoire de téléchargement si nécessaire
 download_directory = './download'
 os.makedirs(download_directory, exist_ok=True)
+
+# Une variable globale pour limiter la fréquence des mises à jour de progression
+_last_progress_update_time = None
 
 async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
@@ -33,6 +43,7 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    logger.info(f"Link verified: {link}")
     await download_video(update, context, link, message)
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str, message):
@@ -58,6 +69,8 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
             reset_progress=False
         )
 
+        video_file_path = None
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
             video_id = info.get("id", None)
@@ -68,7 +81,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
         await edit_or_send_message(
             context, message,
             "🔄 - Fusion des fichiers... / Merging files...",
-            reset_progress=False
+            reset_progress=True
         )
 
         if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:  # 2GB limit
@@ -81,20 +94,16 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
         await edit_or_send_message(
             context, message,
             "📤 - Téléversement de la vidéo... / Uploading video...",
-            reset_progress=False
+            reset_progress=True
         )
 
-        await context.bot.send_video(
-            chat_id=update.effective_chat.id,
-            video=open(video_file_path, 'rb'),
-            reply_to_message_id=update.message.message_id
-        )
+        await send_video_file(context, update.effective_chat.id, video_file_path, update.message.message_id)
 
     except Exception as e:
         await cleanup_and_handle_error(update, context, message, e)
         return
     finally:
-        if os.path.exists(video_file_path):
+        if video_file_path and os.path.exists(video_file_path):
             os.remove(video_file_path)
 
     try:
@@ -109,7 +118,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
     except telegram.error.NetworkError as e:
         logger.error(f"Failed to delete status message due to network error: {e}")
 
-    # Logging information
+    # Log information
     logger.info(
         f"Vidéo téléchargée par {update.effective_user.first_name} "
         f"(ID: {update.effective_user.id}, "
@@ -119,21 +128,54 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
 
 def update_progress(status, message, context):
     if status['status'] == 'downloading':
-        # Seuil pour éditer le message toutes les 25% de progression
-        if status.get('elapsed', 0) % 25 == 0:
-            progress_message = "📥 - Téléchargement de la vidéo... / Downloading video..."
+        global _last_progress_update_time
+        now = datetime.now()
+        if _last_progress_update_time is None or (now - _last_progress_update_time).seconds >= 10:
+            _last_progress_update_time = now
             asyncio.run_coroutine_threadsafe(
                 edit_or_send_message_internal(
                     message.chat.id,
                     message.message_id,
-                    progress_message,
+                    "📥 - Téléchargement de la vidéo... / Downloading video...",
                     context,
                     retry_on_timeout=False
                 ),
                 asyncio.get_event_loop()
             )
 
+async def send_video_file(context, chat_id, video_file_path, reply_to_message_id):
+    if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
+        logger.error("File too large to upload to Telegram.")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ - Fichier trop grand. / File too big.",
+            parse_mode="HTML",
+            reply_to_message_id=reply_to_message_id
+        )
+        return
+
+    try:
+        # Initialisation de Pyrogram Client
+        async with Client("my_bot", api_id=app_id, api_hash=app_hash, bot_token=token) as app:
+            await app.send_chat_action(chat_id, "upload_video")
+            await app.send_video(
+                chat_id=chat_id,
+                video=video_file_path,
+                reply_to_message_id=reply_to_message_id
+            )
+    except Exception as e:
+        logger.error(f"Erreur lors de l'envoi du fichier : {str(e)}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Une erreur est survenue lors de l'envoi du fichier. Veuillez réessayer plus tard.",
+            parse_mode="HTML",
+            reply_to_message_id=reply_to_message_id
+        )
+
 async def edit_or_send_message(context, message, new_text, reset_progress=True):
+    logger.info(f"Attempting to edit message {message.message_id} to new text: {new_text}")
+    if message.text == new_text:
+        return  # Do not attempt to edit if the new text is the same as the current text
     await edit_or_send_message_internal(
         chat_id=message.chat.id,
         message_id=message.message_id,
@@ -155,7 +197,8 @@ async def edit_or_send_message_internal(chat_id, message_id, text, context, retr
             return
         except (telegram.error.BadRequest, telegram.error.RetryAfter, telegram.error.TimedOut, telegram.error.NetworkError) as e:
             logger.error(f"Failed to edit message (attempt {attempt+1}/{max_retries}): {e}")
-            if "Message to edit not found" in str(e):
+            if "Message is not modified" in str(e) or "Message_id_invalid" in str(e) or "Message to edit not found" in str(e):
+                logger.error(f"Message edit will not be retried due to error: {e}")
                 return
             if attempt < max_retries - 1 and retry_on_timeout:
                 await asyncio.sleep(5)
@@ -181,7 +224,7 @@ async def cleanup_and_handle_error(update: Update, context: ContextTypes.DEFAULT
 
     await edit_or_send_message(
         context, message,
-        "❌ - Erreur lors du téléchargement. / Error during download."
+        "❌ - Erreur. / Error."
     )
     logger.error(error)
 

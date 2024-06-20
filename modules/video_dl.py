@@ -2,16 +2,13 @@ import os
 import logging
 import asyncio
 from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler, Application
+from telegram.ext import ContextTypes, CommandHandler
 import yt_dlp
 import telegram.error  # Importation nécessaire pour gérer les exceptions de Telegram
-import httpx  # Importation de la bibliothèque httpx
+from datetime import datetime
 
 # Configuration du logger pour ce module
 logger = logging.getLogger('bot.video_download')
-
-# Configuration des délais pour httpx
-timeout = httpx.Timeout(10.0, connect=60.0, read=60.0)
 
 # Vérifiez et créez le répertoire de téléchargement si nécessaire
 download_directory = './download'
@@ -31,7 +28,7 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not link:
         await edit_or_send_message(
-            update, context, message,
+            context, message,
             "❌ - Aucun lien trouvé. / No link found."
         )
         return
@@ -39,9 +36,10 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await download_video(update, context, link, message)
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str, message):
+    date = '{:%Y-%m-%d}'.format(datetime.now())
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': os.path.join(download_directory, '%(title)s.%(ext)s'),
+        'outtmpl': os.path.join(download_directory, date + '_%(id)s.%(ext)s'),
         'restrictfilenames': True,
         'noplaylist': True,
         'quiet': True,
@@ -55,32 +53,33 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
 
     try:
         await edit_or_send_message(
-            update, context, message,
+            context, message,
             "📥 - Téléchargement de la vidéo... / Downloading video...",
             reset_progress=False
         )
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
+            video_id = info.get("id", None)
+            video_ext = info.get("ext", None)
             filename = ydl.prepare_filename(info)
             video_file_path = filename.rsplit('.', 1)[0] + '.mp4'
 
         await edit_or_send_message(
-            update, context, message,
+            context, message,
             "🔄 - Fusion des fichiers... / Merging files...",
             reset_progress=False
         )
 
-        if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
-            os.remove(video_file_path)
+        if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:  # 2GB limit
             await edit_or_send_message(
-                update, context, message,
+                context, message,
                 "❌ - Fichier trop grand. / File too big."
             )
             return
 
         await edit_or_send_message(
-            update, context, message,
+            context, message,
             "📤 - Téléversement de la vidéo... / Uploading video...",
             reset_progress=False
         )
@@ -88,17 +87,16 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
         await context.bot.send_video(
             chat_id=update.effective_chat.id,
             video=open(video_file_path, 'rb'),
-            reply_to_message_id=update.message.message_id,
-            timeout=60  # augmentation du délai d'attente ici
+            reply_to_message_id=update.message.message_id
         )
 
     except Exception as e:
         await cleanup_and_handle_error(update, context, message, e)
         return
+    finally:
+        if os.path.exists(video_file_path):
+            os.remove(video_file_path)
 
-    os.remove(video_file_path)
-
-    # Suppression du message de statut après l'envoi de la vidéo
     try:
         await context.bot.delete_message(
             chat_id=message.chat.id,
@@ -135,7 +133,7 @@ def update_progress(status, message, context):
                 asyncio.get_event_loop()
             )
 
-async def edit_or_send_message(update, context, message, new_text, reset_progress=True):
+async def edit_or_send_message(context, message, new_text, reset_progress=True):
     await edit_or_send_message_internal(
         chat_id=message.chat.id,
         message_id=message.message_id,
@@ -145,7 +143,7 @@ async def edit_or_send_message(update, context, message, new_text, reset_progres
     )
 
 async def edit_or_send_message_internal(chat_id, message_id, text, context, retry_on_timeout=True):
-    max_retries = 3  # Réduction du nombre maximal de tentatives
+    max_retries = 3
     for attempt in range(max_retries):
         try:
             await context.bot.edit_message_text(
@@ -157,8 +155,10 @@ async def edit_or_send_message_internal(chat_id, message_id, text, context, retr
             return
         except (telegram.error.BadRequest, telegram.error.RetryAfter, telegram.error.TimedOut, telegram.error.NetworkError) as e:
             logger.error(f"Failed to edit message (attempt {attempt+1}/{max_retries}): {e}")
+            if "Message to edit not found" in str(e):
+                return
             if attempt < max_retries - 1 and retry_on_timeout:
-                await asyncio.sleep(5)  # Attendre un peu plus longtemps
+                await asyncio.sleep(5)
             else:
                 try:
                     await context.bot.delete_message(
@@ -180,7 +180,7 @@ async def cleanup_and_handle_error(update: Update, context: ContextTypes.DEFAULT
         os.remove(os.path.join(download_directory, file))
 
     await edit_or_send_message(
-        update, context, message,
+        context, message,
         "❌ - Erreur lors du téléchargement. / Error during download."
     )
     logger.error(error)
@@ -188,9 +188,3 @@ async def cleanup_and_handle_error(update: Update, context: ContextTypes.DEFAULT
 def register(application, track_command):
     start_handler = CommandHandler("v", track_command("v")(check_link))
     application.add_handler(start_handler)
-
-if __name__ == "__main__":
-    # Configuration du bot et lancement de votre application
-    app = Application.builder().token("YOUR_BOT_TOKEN_HERE").build()
-    register(app, lambda x: x)
-    app.run_polling()

@@ -1,3 +1,6 @@
 bot_log.txt
 *.pyc
-.\download\*
+*.part
+*.mp4
+*.mp3
+*.webm

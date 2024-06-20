@@ -7,9 +7,17 @@
             "command_count": {
                 "donate": 7,
                 "help": 3,
-                "start": 4,
+                "start": 5,
                 "a": 10,
-                "v": 6
+                "v": 11
+            }
+        },
+        "596313362": {
+            "username": "Neco47",
+            "first_name": "Neco",
+            "last_name": null,
+            "command_count": {
+                "a": 3
             }
         }
     },
@@ -17,8 +25,8 @@
     "commands": {
         "donate": 7,
         "help": 3,
-        "start": 4,
-        "a": 10,
-        "v": 6
+        "start": 5,
+        "a": 13,
+        "v": 11
     }
 }

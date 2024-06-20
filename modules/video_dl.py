@@ -13,25 +13,10 @@ logger = logging.getLogger('bot.video_download')
 download_directory = './download'
 os.makedirs(download_directory, exist_ok=True)
 
-# Progression globale
-progress_stages = {
-    'Checking link': 0.0,
-    'Downloading': 0.3,
-    'Merging': 0.6,
-    'Uploading': 0.9,
-    'Done': 1.0
-}
-
-def progress_bar(progress):
-    bar_length = 20
-    filled_length = int(bar_length * progress)
-    bar = '█' * filled_length + '-' * (bar_length - filled_length)
-    return f"[{bar}] {int(100 * progress)}%"
-
 async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"🔍 - Vérification du lien... / Checking link...\n{progress_bar(progress_stages['Checking link'])}",
+        text="🔍 - Vérification du lien... / Checking link...",
         parse_mode="HTML",
         reply_to_message_id=update.message.message_id
     )
@@ -43,7 +28,7 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not link:
         await edit_or_send_message(
             update, context, message,
-            f"❌ - Aucun lien trouvé. / No link found.\n{progress_bar(progress_stages['Done'])}"
+            "❌ - Aucun lien trouvé. / No link found."
         )
         return
 
@@ -67,7 +52,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
     try:
         await edit_or_send_message(
             update, context, message,
-            f"📥 - Téléchargement de la vidéo... / Downloading video...\n{progress_bar(progress_stages['Downloading'])}",
+            "📥 - Téléchargement de la vidéo... / Downloading video...",
             reset_progress=False
         )
 
@@ -78,7 +63,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
 
         await edit_or_send_message(
             update, context, message,
-            f"🔄 - Fusion des fichiers... / Merging files...\n{progress_bar(progress_stages['Merging'])}",
+            "🔄 - Fusion des fichiers... / Merging files...",
             reset_progress=False
         )
 
@@ -86,13 +71,13 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
             os.remove(video_file_path)
             await edit_or_send_message(
                 update, context, message,
-                f"❌ - Fichier trop grand. / File too big.\n{progress_bar(progress_stages['Done'])}"
+                "❌ - Fichier trop grand. / File too big."
             )
             return
 
         await edit_or_send_message(
             update, context, message,
-            f"📤 - Téléversement de la vidéo... / Uploading video...\n{progress_bar(progress_stages['Uploading'])}",
+            "📤 - Téléversement de la vidéo... / Uploading video...",
             reset_progress=False
         )
 
@@ -116,6 +101,10 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
         )
     except telegram.error.BadRequest as e:
         logger.error(f"Failed to delete status message: {e}")
+    except telegram.error.TimedOut as e:
+        logger.error(f"Failed to delete status message due to timeout: {e}")
+    except telegram.error.NetworkError as e:
+        logger.error(f"Failed to delete status message due to network error: {e}")
 
     # Logging information
     logger.info(
@@ -127,46 +116,58 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
 
 def update_progress(status, message, context):
     if status['status'] == 'downloading':
-        total = status.get('total_bytes_estimate') or status.get('total_bytes') or 1
-        progress = status.get('downloaded_bytes', 0)
-        partial_progress = progress / total * 0.3 + progress_stages['Downloading'] 
-
-        progress_message = f"📥 - Téléchargement de la vidéo... / Downloading video...\n{progress_bar(partial_progress)}"
-        asyncio.run_coroutine_threadsafe(
-            context.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                text=progress_message,
-                parse_mode="HTML"
-            ),
-            asyncio.get_event_loop()
-        )
+        # Seuil pour éditer le message toutes les 10% de progression
+        if status.get('elapsed', 0) % 10 == 0:
+            progress_message = "📥 - Téléchargement de la vidéo... / Downloading video..."
+            asyncio.run_coroutine_threadsafe(
+                edit_or_send_message_internal(
+                    message.chat.id,
+                    message.message_id,
+                    progress_message,
+                    context,
+                    retry_on_timeout=False
+                ),
+                asyncio.get_event_loop()
+            )
 
 async def edit_or_send_message(update, context, message, new_text, reset_progress=True):
-    try:
-        await context.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            text=new_text,
-            parse_mode="HTML"
-        )
-    except (telegram.error.BadRequest, telegram.error.TimedOut, telegram.error.RetryAfter) as e:
-        logger.error(f"Failed to edit message: {e}")
+    await edit_or_send_message_internal(
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+        text=new_text,
+        context=context,
+        retry_on_timeout=True
+    )
+
+async def edit_or_send_message_internal(chat_id, message_id, text, context, retry_on_timeout=True):
+    max_retries = 3  # Réduction du nombre maximal de tentatives
+    for attempt in range(max_retries):
         try:
-            await context.bot.delete_message(
-                chat_id=message.chat.id,
-                message_id=message.message_id
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+                parse_mode="HTML"
             )
-        except (telegram.error.BadRequest, telegram.error.TimedOut, telegram.error.RetryAfter) as e:
-            logger.error(f"Failed to delete message: {e}")
-        if reset_progress:
-            text = new_text if new_text else ""
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=new_text,
-            parse_mode="HTML",
-            reply_to_message_id=update.message.message_id
-        )
+            return
+        except (telegram.error.BadRequest, telegram.error.RetryAfter, telegram.error.TimedOut, telegram.error.NetworkError) as e:
+            logger.error(f"Failed to edit message (attempt {attempt+1}/{max_retries}): {e}")
+            if attempt < max_retries - 1 and retry_on_timeout:
+                await asyncio.sleep(5)  # Attendre un peu plus longtemps
+            else:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=chat_id,
+                        message_id=message_id
+                    )
+                except (telegram.error.BadRequest, telegram.error.TimedOut, telegram.error.RetryAfter, telegram.error.NetworkError) as e:
+                    logger.error(f"Failed to delete message: {e}")
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode="HTML"
+                )
+                return
 
 async def cleanup_and_handle_error(update: Update, context: ContextTypes.DEFAULT_TYPE, message, error: Exception):
     # Supprimer tous les fichiers dans le répertoire de téléchargement
@@ -175,10 +176,16 @@ async def cleanup_and_handle_error(update: Update, context: ContextTypes.DEFAULT
 
     await edit_or_send_message(
         update, context, message,
-        f"❌ - Erreur lors du téléchargement. / Error during download.\n{progress_bar(progress_stages['Done'])}"
+        "❌ - Erreur lors du téléchargement. / Error during download."
     )
     logger.error(error)
 
 def register(application, track_command):
     start_handler = CommandHandler("v", track_command("v")(check_link))
     application.add_handler(start_handler)
+
+if __name__ == "__main__":
+    # Configuration du bot et lancement de votre application
+    app = Application.builder().token("YOUR_BOT_TOKEN_HERE").build()
+    register(app, lambda x: x)
+    app.run_polling()

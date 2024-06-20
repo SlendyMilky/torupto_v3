@@ -1,18 +1,26 @@
 from telegram import Update
-from telegram.ext import CallbackContext, CommandHandler
+from telegram.ext import ContextTypes, CommandHandler
+import logging
 
-def start(update: Update, context: CallbackContext):
+# Configuration du logger pour ce module
+logger = logging.getLogger('bot.start')
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Commande /start utilisée par {update.effective_user.first_name} (ID: {update.effective_user.id})")
     message = (
         "🇨🇭 <b>Bonjour !</b>\n"
         "Je me présente, TorUpto_V3, la version améliorée du bot. "
-        "Mon objectif est de vous fournir un lien uptobox pour tout fichier torrent ou magnet que vous m'envoyez. "
-        "En cas d'indisponibilité d'un torrent/magnet, je m'engage à le télécharger et à le téléverser sur https://uptobox.com ! 🤖💼\n\n"
+        "Malheureusement, il n'est plus possible de télécharger des torrents et des magnets. "
+        "Cependant, vous pouvez toujours télécharger des médias via des liens (vidéos, gifs et sons). "
+        "Je suis ici pour vous aider à gérer ces types de fichiers ! 🤖💼\n\n"
         "🇬🇧 <b>Hello!</b>\n"
-        "I am TorUpto_V3! The new version of the bot. My goal is to send you an uptobox link for any torrent or magnet file you send me. "
-        "If a torrent/magnet is not available, I will ensure to download it and then upload it to https://uptobox.com! 🤖💼"
+        "I am TorUpto_V3! The new version of the bot. Unfortunately, it is no longer possible to download torrents and magnets. "
+        "However, you can still download media via links (videos, gifs, and sounds). "
+        "I am here to help you manage these types of files! 🤖💼"
     )
     
-    update.message.reply_text(message, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(message, parse_mode="HTML")
 
-def register(dispatcher):
-    dispatcher.add_handler(CommandHandler("start", start))
+def register(application, track_command):
+    start_handler = CommandHandler("start", track_command("start")(start))
+    application.add_handler(start_handler)

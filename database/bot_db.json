@@ -1,0 +1,22 @@
+{
+    "users": {
+        "345019097": {
+            "username": "Slendy_Milky",
+            "first_name": "Yann",
+            "last_name": "🇨🇭",
+            "command_count": {
+                "donate": 7,
+                "help": 3,
+                "start": 4,
+                "a": 7
+            }
+        }
+    },
+    "groups": {},
+    "commands": {
+        "donate": 7,
+        "help": 3,
+        "start": 4,
+        "a": 7
+    }
+}

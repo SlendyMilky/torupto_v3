@@ -5,9 +5,13 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, Application
 import yt_dlp
 import telegram.error  # Importation nécessaire pour gérer les exceptions de Telegram
+import httpx  # Importation de la bibliothèque httpx
 
 # Configuration du logger pour ce module
 logger = logging.getLogger('bot.video_download')
+
+# Configuration des délais pour httpx
+timeout = httpx.Timeout(10.0, connect=60.0, read=60.0)
 
 # Vérifiez et créez le répertoire de téléchargement si nécessaire
 download_directory = './download'
@@ -84,7 +88,8 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
         await context.bot.send_video(
             chat_id=update.effective_chat.id,
             video=open(video_file_path, 'rb'),
-            reply_to_message_id=update.message.message_id
+            reply_to_message_id=update.message.message_id,
+            timeout=60  # augmentation du délai d'attente ici
         )
 
     except Exception as e:
@@ -116,8 +121,8 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE, lin
 
 def update_progress(status, message, context):
     if status['status'] == 'downloading':
-        # Seuil pour éditer le message toutes les 10% de progression
-        if status.get('elapsed', 0) % 10 == 0:
+        # Seuil pour éditer le message toutes les 25% de progression
+        if status.get('elapsed', 0) % 25 == 0:
             progress_message = "📥 - Téléchargement de la vidéo... / Downloading video..."
             asyncio.run_coroutine_threadsafe(
                 edit_or_send_message_internal(

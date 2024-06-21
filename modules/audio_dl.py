@@ -1,22 +1,22 @@
-import os
-import logging
-from pyrogram import filters, Client, enums
-from pyrogram.types import Message
+from pyrogram import filters
 from pyrogram.handlers import MessageHandler
+from pyrogram.types import Message
+from pyrogram.enums import ParseMode
 import yt_dlp
-from datetime import datetime
+import logging
+import os
+import asyncio
 
 # Configuration du logger pour ce module
-logger = logging.getLogger('bot.video_download')
+logger = logging.getLogger('bot.audio_download')
 
-# Vérifiez et créez le répertoire de téléchargement si nécessaire
 download_directory = './download'
 os.makedirs(download_directory, exist_ok=True)
 
-async def check_link(client: Client, message: Message):
+async def check_link(client, message: Message):
     verification_message = await message.reply(
         "🔍 - Vérification du lien... / Checking link...",
-        parse_mode=enums.ParseMode.HTML
+        parse_mode=ParseMode.HTML
     )
 
     # Extraction du lien YouTube du message
@@ -27,50 +27,54 @@ async def check_link(client: Client, message: Message):
         await edit_or_send_message(client, verification_message, "❌ - Aucun lien trouvé. / No link found.")
         return
 
-    await edit_or_send_message(client, verification_message, "📥 - Téléchargement de la vidéo... / Downloading video...")
-    await download_video(client, message, link, verification_message)
+    await edit_or_send_message(client, verification_message, "📥 - Téléchargement de l'audio... / Downloading audio...")
+    await download_audio(client, message, link, verification_message)
 
-async def download_video(client: Client, message: Message, link: str, status_message):
-    date = '{:%Y-%m-%d}'.format(datetime.now())
+async def download_audio(client, message, link: str, status_message):
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': os.path.join(download_directory, date + '_%(id)s.%(ext)s'),
+        'format': 'bestaudio/best',
+        'outtmpl': os.path.join(download_directory, '%(title)s.%(ext)s'),
         'restrictfilenames': True,
         'noplaylist': True,
         'quiet': True,
+        'progress_hooks': [],
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }, {
+            'key': 'EmbedThumbnail',
+        }, {
+            'key': 'FFmpegMetadata',
         }],
-        'merge_output_format': 'mp4',
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([link])
 
-            await edit_or_send_message(client, status_message, "🔄 - Traitement de la vidéo... / Processing video...")
+            await edit_or_send_message(client, status_message, "🔄 - Traitement de l'audio... / Processing audio...")
 
             filename = ydl.prepare_filename(ydl.extract_info(link, download=False))
-            video_file_path = filename.rsplit('.', 1)[0] + '.mp4'
+            audio_file_path = filename.rsplit('.', 1)[0] + '.mp3'
     except yt_dlp.DownloadError as e:
         await cleanup_and_handle_error(client, status_message, e)
         return
 
-    if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
-        os.remove(video_file_path)
+    if os.path.getsize(audio_file_path) > 2 * 1024 * 1024 * 1024:
+        os.remove(audio_file_path)
         await edit_or_send_message(client, status_message, "❌ - Fichier trop grand. / File too big.")
         return
 
-    await edit_or_send_message(client, status_message, "📤 - Téléversement de la vidéo... / Uploading video...")
+    await edit_or_send_message(client, status_message, "📤 - Téléversement de l'audio... / Uploading audio...")
 
-    await client.send_video(
+    await client.send_audio(
         chat_id=message.chat.id,
-        video=video_file_path,
+        audio=audio_file_path,
         reply_to_message_id=message.id
     )
 
-    os.remove(video_file_path)
+    os.remove(audio_file_path)
 
     await client.delete_messages(
         chat_id=message.chat.id,
@@ -79,7 +83,7 @@ async def download_video(client: Client, message: Message, link: str, status_mes
 
     # Logging information
     logger.info(
-        f"Vidéo téléchargée par {message.from_user.first_name} (ID: {message.from_user.id}, "
+        f"Audio téléchargé par {message.from_user.first_name} (ID: {message.from_user.id}, "
         f"Username: {message.from_user.username}, Langue: {message.from_user.language_code})"
     )
 
@@ -89,7 +93,7 @@ async def edit_or_send_message(client, status_message, new_text):
             chat_id=status_message.chat.id,
             message_id=status_message.id,
             text=new_text,
-            parse_mode=enums.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
     except Exception as e:
         logger.error(e)
@@ -100,7 +104,7 @@ async def edit_or_send_message(client, status_message, new_text):
         return await client.send_message(
             chat_id=status_message.chat.id,
             text=new_text,
-            parse_mode=enums.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
 async def cleanup_and_handle_error(client, status_message, error: Exception):
@@ -112,5 +116,5 @@ async def cleanup_and_handle_error(client, status_message, error: Exception):
     logger.error(error)
 
 def register(app, track_command):
-    start_handler = MessageHandler(track_command("v")(check_link), filters.command("v"))
+    start_handler = MessageHandler(track_command("a")(check_link), filters.command("a"))
     app.add_handler(start_handler)

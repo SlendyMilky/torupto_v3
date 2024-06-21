@@ -35,7 +35,7 @@ jobs:
 
       - name: Build and Push Docker Image to GitHub Container Registry
         run: |
-          docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/ibot-modo:latest
-          docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/ibot-modo:${{ env.VERSION }}
-          docker push ghcr.io/${{ env.REPO_OWNER }}/ibot-modo:latest
-          docker push ghcr.io/${{ env.REPO_OWNER }}/ibot-modo:${{ env.VERSION }}
+          docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/torupto:latest
+          docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/torupto:${{ env.VERSION }}
+          docker push ghcr.io/${{ env.REPO_OWNER }}/torupto:latest
+          docker push ghcr.io/${{ env.REPO_OWNER }}/torupto:${{ env.VERSION }}

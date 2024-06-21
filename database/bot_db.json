@@ -5,9 +5,9 @@
             "first_name": "Yann",
             "last_name": "🇨🇭",
             "command_count": {
-                "donate": 7,
-                "help": 3,
-                "start": 5,
+                "donate": 10,
+                "help": 6,
+                "start": 6,
                 "a": 11,
                 "v": 31
             }
@@ -23,9 +23,9 @@
     },
     "groups": {},
     "commands": {
-        "donate": 7,
-        "help": 3,
-        "start": 5,
+        "donate": 10,
+        "help": 6,
+        "start": 6,
         "a": 16,
         "v": 31
     }

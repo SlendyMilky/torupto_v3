@@ -3,9 +3,10 @@ import logging
 import glob
 import importlib.util
 import json
-from telegram.ext import Application, ExtBot, Defaults
-from telegram.request import HTTPXRequest
-import httpx
+import inspect
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Configuration du logger
 logger = logging.getLogger('bot')
@@ -39,10 +40,10 @@ def save_db(db):
         json.dump(db, f, indent=4, ensure_ascii=False)
 
 # Update DB function
-def update_db(update, command_name):
+def update_db(update: Message, command_name):
     db = load_db()
-    user = update.effective_user
-    chat = update.effective_chat
+    user = update.from_user
+    chat = update.chat
 
     user_info = db["users"].setdefault(str(user.id), {
         "username": user.username,
@@ -57,7 +58,7 @@ def update_db(update, command_name):
     if chat.type in ["group", "supergroup"]:
         group_info = db["groups"].setdefault(str(chat.id), {
             "title": chat.title,
-            "member_count": chat.get_member_count()
+            "member_count": chat.members_count
         })
 
     # Update global command usage
@@ -69,14 +70,14 @@ def update_db(update, command_name):
 # Decorator for updating DB
 def track_command(command_name):
     def decorator(func):
-        async def wrapper(update, context):
-            update_db(update, command_name)
-            return await func(update, context)
+        async def wrapper(client, message):
+            update_db(message, command_name)
+            return await func(client, message)
         return wrapper
     return decorator
 
 # Load modules function
-def load_modules(application):
+def load_modules(app, scheduler):
     for filename in glob.glob("./modules/*.py"):
         if filename.endswith(".py"):
             module_name = os.path.basename(filename)[:-3]
@@ -84,32 +85,36 @@ def load_modules(application):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             if hasattr(module, 'register'):
-                module.register(application, track_command)  # Pass track_command as a keyword argument
-
-class CustomHTTPXRequest(HTTPXRequest):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.client = httpx.AsyncClient(base_url="http://localhost:8081")  # Remplacez URL par celle de votre serveur Bot API local
- 
-    async def _request(self, *args, **kwargs):
-        response = await self.client.request(*args, **kwargs)
-        response.raise_for_status()
-        return response
+                # Check if the register function has a parameter for the scheduler
+                register_spec = inspect.getfullargspec(module.register)
+                if 'scheduler' in register_spec.args:
+                    module.register(app, track_command, scheduler)  # Pass track_command and scheduler
+                else:
+                    module.register(app, track_command)  # Pass only track_command
 
 def main():
-    token = os.getenv('BOT_TOKEN')
-    if not token:
-        logger.error("No BOT_TOKEN provided. Please set the BOT_TOKEN environment variable.")
+    api_id = os.getenv('API_ID')
+    api_hash = os.getenv('API_HASH')
+    bot_token = os.getenv('BOT_TOKEN')
+
+    if not api_id or not api_hash or not bot_token:
+        logger.error("Missing API_ID, API_HASH or BOT_TOKEN. Please set the corresponding environment variables.")
         return
 
-    custom_request = CustomHTTPXRequest()
-    application = Application.builder().token(token).request(custom_request).build()
+    app = Client("my_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+    scheduler = AsyncIOScheduler()
 
     # Load all modules dynamically
-    load_modules(application)
+    load_modules(app, scheduler)
+
+    @app.on_message(filters.command("start"))
+    @track_command("start")
+    async def start_command(client, message):
+        await message.reply("Bot started successfully")
 
     logger.info("Bot started successfully")
-    application.run_polling()
+    scheduler.start()
+    app.run()
 
 if __name__ == '__main__':
     main()

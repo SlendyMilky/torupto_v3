@@ -1,13 +1,15 @@
-from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler
+from pyrogram import filters
+from pyrogram.types import Message
+from pyrogram.handlers import MessageHandler
+from pyrogram.enums import ParseMode
 import logging
 
 # Configuration du logger pour ce module
 logger = logging.getLogger('bot.start')
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Commande /start utilisée par {update.effective_user.first_name} (ID: {update.effective_user.id})")
-    message = (
+async def start_command(client, message: Message):
+    logger.info(f"Commande /start utilisée par {message.from_user.first_name} (ID: {message.from_user.id})")
+    start_message = (
         "🇨🇭 <b>Bonjour !</b>\n"
         "Je me présente, TorUpto_V3, la version améliorée du bot. "
         "Malheureusement, il n'est plus possible de télécharger des torrents et des magnets. "
@@ -19,8 +21,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I am here to help you manage these types of files! 🤖💼"
     )
     
-    await update.message.reply_text(message, parse_mode="HTML")
+    await message.reply(start_message, parse_mode=ParseMode.HTML)
 
-def register(application, track_command):
-    start_handler = CommandHandler("start", track_command("start")(start))
-    application.add_handler(start_handler)
+def register(app, track_command):
+    start_handler = MessageHandler(track_command("start")(start_command), filters.command("start"))
+    app.add_handler(start_handler)

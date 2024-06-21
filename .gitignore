@@ -5,3 +5,5 @@ bot_log.txt
 *.mp3
 *.webm
 *.session
+*.session-journal
+.env

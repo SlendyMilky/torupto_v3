@@ -17,7 +17,7 @@
             "first_name": "Neco",
             "last_name": null,
             "command_count": {
-                "a": 6
+                "a": 8
             }
         }
     },
@@ -26,7 +26,7 @@
         "donate": 10,
         "help": 6,
         "start": 6,
-        "a": 28,
+        "a": 30,
         "v": 49
     }
 }

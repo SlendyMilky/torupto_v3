@@ -34,7 +34,7 @@ async def check_link(client: Client, message: Message):
 async def download_video(client: Client, message: Message, link: str, status_message):
     date = '{:%Y-%m-%d}'.format(datetime.now())
     ydl_opts = {
-        'format': 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best[ext=mp4]/bestvideo+bestaudio/best',
+        'format': 'bestvideo[vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': os.path.join(download_directory, date + '_%(id)s.%(ext)s'),
         'restrictfilenames': True,
         'noplaylist': True,
@@ -46,18 +46,27 @@ async def download_video(client: Client, message: Message, link: str, status_mes
         'netrc': True,
         'merge_output_format': 'mp4',
         'sponsorblock_remove': ['sponsor'],
-        'max_filesize': 2 * 1024 * 1024 * 1024  # 2 GB
+        'max_filesize': 2 * 1024 * 1024 * 1024,  # 2 GB
+        'recode-video': 'mp4',  # Re-encode to MP4
+        'postprocessor-args': {
+            'VideoConvertor': ['-c:v', 'libx264']  # Use libx264 for video encoding
+        }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([link])
-
-            await edit_or_send_message(client, status_message, "🔄 - Traitement de la vidéo... / Processing video...")
-
-            filename = ydl.prepare_filename(ydl.extract_info(link, download=False))
+            info_dict = ydl.extract_info(link, download=True)
+            filename = ydl.prepare_filename(info_dict)
             video_file_path = filename.rsplit('.', 1)[0] + '.mp4'
+
+            logger.info(f"Video downloaded and processed: {video_file_path}")
+
     except yt_dlp.DownloadError as e:
+        await cleanup_and_handle_error(client, status_message, e)
+        return
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
         await cleanup_and_handle_error(client, status_message, e)
         return
 

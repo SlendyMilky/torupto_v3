@@ -1,7 +1,7 @@
 version: '3.9'
 services:
     ibot-gpt:
-        image: 'ghcr.io/slendymilky/torupto:1.0.0'
+        image: 'ghcr.io/slendymilky/torupto:latest'
         container_name: torupto
         restart: always
         env_file:

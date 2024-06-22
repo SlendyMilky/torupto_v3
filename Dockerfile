@@ -12,6 +12,7 @@ RUN apk update && \
     linux-headers \
     build-base \
     python3-dev \
+    ffmpeg \
     py3-pip && \
     mkdir /torupto && \
     cp /usr/share/zoneinfo/Europe/Zurich /etc/localtime && \

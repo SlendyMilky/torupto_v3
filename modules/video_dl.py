@@ -170,7 +170,7 @@ def extract_urls(text):
     return url_pattern.findall(text)
 
 def register(app, track_command):
-    start_handler = MessageHandler(check_link, filters.command("v"))
+    start_handler = MessageHandler(track_command("v")(check_link), filters.command("v"))
     auto_download_handler = MessageHandler(automatic_download, filters.text & ~filters.create(lambda _, __, msg: msg.text and msg.text.startswith("/")))
 
     app.add_handler(start_handler)

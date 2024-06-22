@@ -3,6 +3,7 @@ from pyrogram.types import Message
 from pyrogram.handlers import MessageHandler
 from pyrogram.enums import ParseMode
 import logging
+import asyncio
 import subprocess
 
 # Configure the logger for this module
@@ -30,23 +31,21 @@ async def ping_command(client, message: Message):
         else:
             return f"❌ {host} : Erreur"
 
-    # Execute pings and update message
-    results = {
-        "uptobox.com": execute_ping("uptobox.com"),
-        "youtube.com": execute_ping("youtube.com"),
-        "api.telegram.org": execute_ping("api.telegram.org"),
-        "api.alldebrid.com": execute_ping("api.alldebrid.com")
-    }
+    hosts = ["uptobox.com", "youtube.com", "api.telegram.org", "api.alldebrid.com"]
+    results = {}
 
-    updated_message = (
-        "🤡 - Pong !\n\n"
-        f"{results['uptobox.com']}\n"
-        f"{results['youtube.com']}\n"
-        f"{results['api.telegram.org']}\n"
-        f"{results['api.alldebrid.com']}"
-    )
-
-    await initial_message.edit_text(updated_message, parse_mode=ParseMode.HTML)
+    # Execute pings one after another and update message
+    for host in hosts:
+        results[host] = execute_ping(host)
+        updated_message = (
+            "🤡 - Pong !\n\n"
+            f"{results.get('uptobox.com', '📶 uptobox.com : ⌛')}\n"
+            f"{results.get('youtube.com', '📶 youtube.com : ⌛')}\n"
+            f"{results.get('api.telegram.org', '📶 api.telegram.org : ⌛')}\n"
+            f"{results.get('api.alldebrid.com', '📶 api.alldebrid.com : ⌛')}"
+        )
+        await initial_message.edit_text(updated_message, parse_mode=ParseMode.HTML)
+        await asyncio.sleep(1)  # Adding a small delay for better user experience
 
 def register(app, track_command):
     ping_handler = MessageHandler(track_command("ping")(ping_command), filters.command("ping"))

@@ -7,7 +7,8 @@ on:
 jobs:
   build:
     permissions:
-        packages: write
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
 
     steps:
@@ -29,15 +30,19 @@ jobs:
 
       - name: Extract Version
         id: extract_version
-        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_ENV
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Convert Repository Owner to Lowercase
         id: lowercase
-        run: echo "REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        run: |
+          REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')
+          echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
 
       - name: Build and Push Docker Image to GitHub Container Registry
         run: |
           docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/torupto:latest
-          docker build . --tag ghcr.io/${{ env.REPO_OWNER }}/torupto:${{ env.VERSION }}
+          docker tag ghcr.io/${{ env.REPO_OWNER }}/torupto:latest ghcr.io/${{ env.REPO_OWNER }}/torupto:${{ env.VERSION }}
           docker push ghcr.io/${{ env.REPO_OWNER }}/torupto:latest
           docker push ghcr.io/${{ env.REPO_OWNER }}/torupto:${{ env.VERSION }}

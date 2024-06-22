@@ -7,6 +7,11 @@ RUN apk update && \
     htop \
     tzdata \
     python3 \
+    gcc \
+    musl-dev \
+    linux-headers \
+    build-base \
+    python3-dev \
     py3-pip && \
     mkdir /torupto && \
     cp /usr/share/zoneinfo/Europe/Zurich /etc/localtime && \

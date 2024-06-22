@@ -7,3 +7,4 @@ bot_log.txt
 *.session
 *.session-journal
 .env
+.json

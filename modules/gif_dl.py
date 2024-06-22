@@ -109,5 +109,5 @@ async def cleanup_and_handle_error(client, status_message, error: Exception):
     logger.error(error)
 
 def register(app, track_command):
-    start_handler = MessageHandler(check_gif_link, filters.command("g"))
+    start_handler = MessageHandler(track_command("g")(check_gif_link), filters.command("g"))
     app.add_handler(start_handler)

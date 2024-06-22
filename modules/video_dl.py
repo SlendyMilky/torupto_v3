@@ -85,6 +85,7 @@ async def download_video(client: Client, message: Message, link: str, status_mes
         }
     }
 
+    video_file_path = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts_av1) as ydl:  # Try downloading AV1 first
             info_dict = ydl.extract_info(link, download=True)
@@ -110,20 +111,20 @@ async def download_video(client: Client, message: Message, link: str, status_mes
             await cleanup_and_handle_error(client, status_message, e)
             return
 
-    if os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
+    if video_file_path and os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
         os.remove(video_file_path)
         await edit_or_send_message(client, status_message, "❌ - Fichier trop grand. / File too big.")
         return
 
     await edit_or_send_message(client, status_message, "📤 - Téléversement de la vidéo... / Uploading video...")
 
-    await client.send_video(
-        chat_id=message.chat.id,
-        video=video_file_path,
-        reply_to_message_id=message.id
-    )
-
-    os.remove(video_file_path)
+    if video_file_path:
+        await client.send_video(
+            chat_id=message.chat.id,
+            video=video_file_path,
+            reply_to_message_id=message.id
+        )
+        os.remove(video_file_path)
 
     await client.delete_messages(
         chat_id=message.chat.id,
@@ -175,4 +176,3 @@ def register(app, track_command):
 
     app.add_handler(start_handler)
     app.add_handler(auto_download_handler)
-

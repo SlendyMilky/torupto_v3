@@ -1,0 +1,13 @@
+version: '3.9'
+services:
+    ibot-gpt:
+        image: 'ghcr.io/slendymilky/torupto:1.0.0'
+        container_name: torupto
+        restart: always
+        env_file:
+            - stack.env
+        volumes:
+            - torupto_db:/torupto/database
+
+volumes:
+  torupto_db: {}

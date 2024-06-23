@@ -6,6 +6,7 @@ from pyrogram.types import Message
 from pyrogram.handlers import MessageHandler
 import yt_dlp
 from datetime import datetime
+import tempfile
 
 # Configuration du logger pour ce module
 logger = logging.getLogger('bot.video_download')
@@ -56,14 +57,16 @@ async def check_link_with_url(client: Client, message: Message, link: str):
     await download_video(client, message, link, verification_message)
 
 async def download_video(client: Client, message: Message, link: str, status_message):
+    logger.info(f"Attempting to download video from link: {link}")
     date = '{:%Y-%m-%d}'.format(datetime.now())
-    
+    video_file_path = None
+
     ydl_opts_av1 = {
         'format': 'bestvideo[vcodec=av01]+bestaudio/best[vcodec=av01]/best',
         'outtmpl': os.path.join(download_directory, date + '_%(id)s.%(ext)s'),
         'restrictfilenames': True,
         'noplaylist': True,
-        'quiet': True,
+        'quiet': False,  # Set to False to get the yt-dlp output and debug
         'merge_output_format': 'mp4',
     }
 
@@ -72,7 +75,7 @@ async def download_video(client: Client, message: Message, link: str, status_mes
         'outtmpl': os.path.join(download_directory, date + '_%(id)s.%(ext)s'),
         'restrictfilenames': True,
         'noplaylist': True,
-        'quiet': True,
+        'quiet': False,  # Set to False to get the yt-dlp output and debug
         'merge_output_format': 'mp4',
         'addmetadata': True,
         'embedchapters': True,
@@ -85,40 +88,50 @@ async def download_video(client: Client, message: Message, link: str, status_mes
         }
     }
 
-    video_file_path = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts_av1) as ydl:  # Try downloading AV1 first
             info_dict = ydl.extract_info(link, download=True)
             filename = ydl.prepare_filename(info_dict)
             video_file_path = filename.rsplit('.', 1)[0] + '.mp4'
+            # Logging the output filename
+            logger.info(f"Expected downloaded filename in AV1 format: {video_file_path}")
+
+            if not os.path.exists(video_file_path):
+                raise FileNotFoundError(f"File not found: {video_file_path}")
             logger.info(f"Video downloaded in AV1 format: {video_file_path}")
     
-    except yt_dlp.DownloadError as e:
-        logger.warning(f"AV1 format not available, trying default options: {e}")
+    except Exception as e:
+        logger.warning(f"AV1 format not available, trying default options. Error: {str(e)}")
         try:
             with yt_dlp.YoutubeDL(ydl_opts_default) as ydl:  # Otherwise, use the default options
                 info_dict = ydl.extract_info(link, download=True)
                 filename = ydl.prepare_filename(info_dict)
                 video_file_path = filename.rsplit('.', 1)[0] + '.mp4'
+                # Logging the output filename
+                logger.info(f"Expected downloaded filename using default options: {video_file_path}")
+
+                if not os.path.exists(video_file_path):
+                    raise FileNotFoundError(f"File not found: {video_file_path}")
                 logger.info(f"Video downloaded and processed: {video_file_path}")
 
         except yt_dlp.DownloadError as e:
+            logger.error(f"yt-dlp DownloadError: {str(e)}")
             await cleanup_and_handle_error(client, status_message, e)
             return
 
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {str(e)}")
             await cleanup_and_handle_error(client, status_message, e)
             return
 
-    if video_file_path and os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
+    if video_file_path and os.path.exists(video_file_path) and os.path.getsize(video_file_path) > 2 * 1024 * 1024 * 1024:
         os.remove(video_file_path)
         await edit_or_send_message(client, status_message, "❌ - Fichier trop grand. / File too big.")
         return
 
     await edit_or_send_message(client, status_message, "📤 - Téléversement de la vidéo... / Uploading video...")
 
-    if video_file_path:
+    if video_file_path and os.path.exists(video_file_path):
         await client.send_video(
             chat_id=message.chat.id,
             video=video_file_path,

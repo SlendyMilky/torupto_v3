@@ -47,6 +47,11 @@ async def download_gif(client: Client, message: Message, link: str, status_messa
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(link, download=True)
             filename = ydl.prepare_filename(info_dict)
+
+        if filename.lower().endswith('.mp4'):
+            gif_file_path = filename.rsplit('.', 1)[0] + '.mp4'
+            logger.info(f"GIF mp4 downloaded : {gif_file_path}")
+        elif filename.lower().endswith('.gif'):
             gif_file_path = filename.rsplit('.', 1)[0] + '.gif'
             logger.info(f"GIF downloaded: {gif_file_path}")
 
@@ -57,6 +62,12 @@ async def download_gif(client: Client, message: Message, link: str, status_messa
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         await cleanup_and_handle_error(client, status_message, e)
+        return
+
+    # Check if the GIF file actually exists before continuing
+    if not os.path.exists(gif_file_path):
+        await edit_or_send_message(client, status_message, "❌ - Fichier GIF introuvable après téléchargement. / GIF file not found after download.")
+        logger.error(f"File not found: {gif_file_path}")
         return
 
     await edit_or_send_message(client, status_message, "📤 - Téléversement du GIF... / Uploading GIF...")
@@ -79,6 +90,7 @@ async def download_gif(client: Client, message: Message, link: str, status_messa
         f"GIF téléchargé par {message.from_user.first_name} (ID: {message.from_user.id}, "
         f"Username: {message.from_user.username}, Langue: {message.from_user.language_code})"
     )
+
 
 async def edit_or_send_message(client, status_message, new_text):
     try:
